@@ -990,6 +990,7 @@ public class ArenaImpl implements Arena
     {
         specPlayers.add(p);
         p.teleport(region.getSpecWarp());
+        p.setGameMode(GameMode.SPECTATOR);
         timeStrategy.setPlayerTime(p);
     }
 
