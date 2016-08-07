@@ -281,7 +281,7 @@ public class MASpawnThread implements Runnable
             if (region.contains(p.getLocation())) {
                 continue;
             }
-            
+
             Messenger.tell(p, "Leaving so soon?");
             p.getInventory().clear();
             arena.playerLeave(p);

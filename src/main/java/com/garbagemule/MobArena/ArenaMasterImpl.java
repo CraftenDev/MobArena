@@ -43,7 +43,7 @@ public class ArenaMasterImpl implements ArenaMaster
     private Map<String, ArenaClass> classes;
 
     private Set<String> allowedCommands;
-    
+
     private boolean enabled;
 
     /**
@@ -59,7 +59,7 @@ public class ArenaMasterImpl implements ArenaMaster
         this.classes = new HashMap<String, ArenaClass>();
 
         this.allowedCommands = new HashSet<String>();
-        
+
         this.enabled = config.getBoolean("global-settings.enabled", true);
     }
 
@@ -119,11 +119,11 @@ public class ArenaMasterImpl implements ArenaMaster
     public List<Arena> getEnabledArenas() {
         return getEnabledArenas(arenas);
     }
-    
+
     public List<Arena> getEnabledArenas(List<Arena> arenas) {
         List<Arena> result = new ArrayList<Arena>(arenas.size());
         for (Arena arena : arenas)
-            if (arena.isEnabled()) 
+            if (arena.isEnabled())
                 result.add(arena);
         return result;
     }
@@ -234,6 +234,22 @@ public class ArenaMasterImpl implements ArenaMaster
         loadSettings();
         loadClasses();
         loadArenas();
+
+        plugin.getServer().getScheduler().scheduleSyncRepeatingTask(plugin, new Runnable() {
+            @Override
+            public void run() {
+                for(Arena arena : new ArrayList<Arena>(getArenas())) {
+                    List<Player> spectators = new ArrayList<Player>(arena.getSpectators());
+                    for (Player p : spectators) {
+                        if (!arena.getRegion().contains(p.getLocation())) {
+                            Messenger.tell(p, "You moved out of the arena.");
+                            p.getInventory().clear();
+                            arena.playerLeave(p);
+                        }
+                    }
+                }
+            }
+        }, 20, 40);
     }
 
     /**
@@ -288,7 +304,7 @@ public class ArenaMasterImpl implements ArenaMaster
             Messenger.severe("Failed to load class '" + classname + "'.");
             return null;
         }
-        
+
         // Check if weapons and armor for this class should be unbreakable
         boolean weps = section.getBoolean("unbreakable-weapons", true);
         boolean arms = section.getBoolean("unbreakable-armor", true);
@@ -511,13 +527,13 @@ public class ArenaMasterImpl implements ArenaMaster
         if (arenanames == null || arenanames.isEmpty()) {
             createArenaNode(section, "default", plugin.getServer().getWorlds().get(0), false);
         }
-        
+
         arenas = new ArrayList<Arena>();
         for (World w : Bukkit.getServer().getWorlds()) {
             loadArenasInWorld(w.getName());
         }
     }
-    
+
     public void loadArenasInWorld(String worldName) {
         Set<String> arenaNames = config.getConfigurationSection("arenas").getKeys(false);
         if (arenaNames == null || arenaNames.isEmpty()) {
@@ -526,14 +542,14 @@ public class ArenaMasterImpl implements ArenaMaster
         for (String arenaName : arenaNames) {
             Arena arena = getArenaWithName(arenaName);
             if (arena != null) continue;
-            
+
             String arenaWorld = config.getString("arenas." + arenaName + ".settings.world", "");
             if (!arenaWorld.equals(worldName)) continue;
-            
+
             loadArena(arenaName);
         }
     }
-    
+
     public void unloadArenasInWorld(String worldName) {
         Set<String> arenaNames = config.getConfigurationSection("arenas").getKeys(false);
         if (arenaNames == null || arenaNames.isEmpty()) {
@@ -542,10 +558,10 @@ public class ArenaMasterImpl implements ArenaMaster
         for (String arenaName : arenaNames) {
             Arena arena = getArenaWithName(arenaName);
             if (arena == null) continue;
-            
+
             String arenaWorld = arena.getWorld().getName();
             if (!arenaWorld.equals(worldName)) continue;
-            
+
             arena.forceEnd();
             arenas.remove(arena);
         }
