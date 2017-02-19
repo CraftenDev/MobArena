@@ -844,7 +844,7 @@ public class ArenaImpl implements Arena
             EntityType type = horseTypeFromAmount(amount);
 
             // Spawn the horse, set its variant, tame it, etc.
-            AbstractHorse mount = (AbstractHorse) world.spawnEntity(p.getLocation(), type);
+            Horse mount = (Horse) world.spawnEntity(p.getLocation(), type);
             if (MobArena.random.nextInt(20) == 0) {
                 mount.setBaby();
             } else {
@@ -876,10 +876,10 @@ public class ArenaImpl implements Arena
 
     private EntityType horseTypeFromAmount(int amount) {
         switch (amount % 8) {
-            case 2:  return EntityType.DONKEY;
-            case 3:  return EntityType.MULE;
-            case 4:  return EntityType.SKELETON_HORSE;
-            case 5:  return EntityType.ZOMBIE_HORSE;
+//            case 2:  return EntityType.DONKEY;
+//            case 3:  return EntityType.MULE;
+//            case 4:  return EntityType.SKELETON_HORSE;
+//            case 5:  return EntityType.ZOMBIE_HORSE;
             default: return EntityType.HORSE;
         }
     }
