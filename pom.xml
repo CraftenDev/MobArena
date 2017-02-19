@@ -7,7 +7,7 @@
   <groupId>com.garbagemule</groupId>
   <artifactId>mobarena</artifactId>
   <name>MobArena</name>
-  <version>0.97.2-SNAPSHOT</version>
+  <version>0.97.6-SNAPSHOT</version>
 
   <build>
     <plugins>
@@ -61,7 +61,7 @@
     <dependency>
       <groupId>org.bukkit</groupId>
       <artifactId>bukkit</artifactId>
-      <version>1.8.7-R0.1-SNAPSHOT</version>
+      <version>1.11-R0.1-SNAPSHOT</version>
     </dependency>
 
     <!-- Vault -->

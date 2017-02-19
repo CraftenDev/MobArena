@@ -3,6 +3,7 @@ package com.garbagemule.MobArena;
 import java.util.*;
 
 import com.garbagemule.MobArena.events.ArenaKillEvent;
+import com.garbagemule.MobArena.util.ClassChests;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -35,6 +36,7 @@ import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.hanging.HangingBreakEvent;
 import org.bukkit.event.player.*;
 import org.bukkit.event.vehicle.VehicleExitEvent;
+import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
@@ -649,7 +651,7 @@ public class ArenaListener
             onPetDamage(event, (Wolf) damagee, damager);
         }
         // Mount
-        else if (damagee instanceof Horse && monsters.hasMount(damagee)) {
+        else if (damagee instanceof AbstractHorse && monsters.hasMount(damagee)) {
             onMountDamage(event, (Horse) damagee, damager);
         }
         // Player
@@ -975,8 +977,8 @@ public class ArenaListener
             event.setCancelled(true);
         }
 
-        // If there's no block involved, just return.
-        if (!event.hasBlock())
+        // Bail if off-hand or if there's no block involved.
+        if (event.getHand().equals(EquipmentSlot.OFF_HAND) || !event.hasBlock())
             return;
 
         // Iron block
@@ -1002,7 +1004,7 @@ public class ArenaListener
 
     private void handleSign(Sign sign, Player p) {
         // Check if the first line is a class name.
-        String className = ChatColor.stripColor(sign.getLine(0)).toLowerCase();
+        String className = ChatColor.stripColor(sign.getLine(0)).toLowerCase().replace(" ", "");
 
         if (!arena.getClasses().containsKey(className) && !className.equals("random"))
             return;
@@ -1061,59 +1063,17 @@ public class ArenaListener
             public void run() {
                 if (!className.equalsIgnoreCase("random")) {
                     if (useClassChests) {
-                        // Check for stored class chests first
-                        ArenaClass ac = plugin.getArenaMaster().getClasses().get(className.toLowerCase());
-                        Location loc = ac.getClassChest();
-                        Block blockChest;
-                        if (loc != null) {
-                            blockChest = loc.getBlock();
-                        } else {
-                            // Otherwise, start the search
-                            BlockFace backwards = ((org.bukkit.material.Sign) sign.getData()).getFacing().getOppositeFace();
-                            Block blockSign   = sign.getBlock();
-                            Block blockBelow  = blockSign.getRelative(BlockFace.DOWN);
-                            Block blockBehind = blockBelow.getRelative(backwards);
-
-                            // If the block below this sign is a class sign, swap the order
-                            if (blockBelow.getType() == Material.WALL_SIGN || blockBelow.getType() == Material.SIGN_POST) {
-                                String className = ChatColor.stripColor(((Sign) blockBelow.getState()).getLine(0)).toLowerCase();
-                                if (arena.getClasses().containsKey(className)) {
-                                    blockSign = blockBehind;  // Use blockSign as a temp while swapping
-                                    blockBehind = blockBelow;
-                                    blockBelow = blockSign;
-                                }
-                            }
-
-                            // TODO: Make number of searches configurable
-                            // First check the pillar below the sign
-                            blockChest = findChestBelow(blockBelow, 6);
-
-                            // Then, if no chest was found, check the pillar behind the sign
-                            if (blockChest == null) blockChest = findChestBelow(blockBehind, 6);
+                        ArenaClass ac = plugin.getArenaMaster().getClasses().get(className.toLowerCase().replace(" ", ""));
+                        if (ClassChests.assignClassFromStoredClassChest(arena, p, ac)) {
+                            return;
                         }
-
-                        // If a chest was found, get the contents
-                        if (blockChest != null) {
-                            InventoryHolder holder = (InventoryHolder) blockChest.getState();
-                            ItemStack[] contents = holder.getInventory().getContents();
-                            // Guard against double-chests for now
-                            if (contents.length > 36) {
-                                ItemStack[] newContents = new ItemStack[36];
-                                System.arraycopy(contents, 0, newContents, 0, 36);
-                                contents = newContents;
-                            }
-                            arena.assignClassGiveInv(p, className, contents);
-                            p.getInventory().setContents(contents);
-                            Messenger.tell(p, Msg.LOBBY_CLASS_PICKED, TextUtils.camelCase(className));
-                            if (price > 0D) {
-                                Messenger.tell(p, Msg.LOBBY_CLASS_PRICE,  plugin.economyFormat(price));
-                            }
+                        if (ClassChests.assignClassFromClassChestSearch(arena, p, ac, sign)) {
                             return;
                         }
                         // Otherwise just fall through and use the items from the config-file
                     }
                     arena.assignClass(p, className);
-                    Messenger.tell(p, Msg.LOBBY_CLASS_PICKED, TextUtils.camelCase(className));
+                    Messenger.tell(p, Msg.LOBBY_CLASS_PICKED, arena.getClasses().get(className).getConfigName());
                     if (price > 0D) {
                         Messenger.tell(p, Msg.LOBBY_CLASS_PRICE,  plugin.economyFormat(price));
                     }
@@ -1124,15 +1084,6 @@ public class ArenaListener
                 }
             }
         });
-    }
-
-    private Block findChestBelow(Block b, int left) {
-        if (left < 0) return null;
-
-        if (b.getType() == Material.CHEST || b.getType() == Material.TRAPPED_CHEST) {
-            return b;
-        }
-        return findChestBelow(b.getRelative(BlockFace.DOWN), left - 1);
     }
 
     public void onPlayerQuit(PlayerQuitEvent event) {

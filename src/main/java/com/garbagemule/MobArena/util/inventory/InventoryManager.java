@@ -48,21 +48,18 @@ public class InventoryManager
         config.set("armor", armor);
         config.save(file);
         
-        // And clear the inventory
-        clearInventory(p);
         p.updateInventory();
     }
     
     public void restoreInv(Player p) throws FileNotFoundException, IOException, InvalidConfigurationException {
-        // Grab the file on disk
-        File file = new File(dir, p.getName());
-        
         // Try to grab the items from memory first
-        ItemStack[] items = this.items.remove(p);
-        ItemStack[] armor = this.armor.remove(p);
+        ItemStack[] items = this.items.get(p);
+        ItemStack[] armor = this.armor.get(p);
         
         // If we can't restore from memory, restore from file
         if (items == null || armor == null) {
+            File file = new File(dir, p.getName());
+
             YamlConfiguration config = new YamlConfiguration();
             config.load(file);
             
@@ -78,9 +75,16 @@ public class InventoryManager
         // Set the player inventory contents
         p.getInventory().setContents(items);
         p.getInventory().setArmorContents(armor);
-        
-        // Delete the file
-        file.delete();
+    }
+
+    public void clearCache(Player p) {
+        items.remove(p);
+        armor.remove(p);
+
+        File file = new File(dir, p.getName());
+        if (file.exists()) {
+            file.delete();
+        }
     }
     
     /**
@@ -94,6 +98,7 @@ public class InventoryManager
         inv.setChestplate(null);
         inv.setLeggings(null);
         inv.setBoots(null);
+        inv.setItemInOffHand(null);
         InventoryView view = p.getOpenInventory();
         if (view != null) {
             view.setCursor(null);
@@ -108,15 +113,14 @@ public class InventoryManager
         ItemStack[] inventory = p.getInventory().getContents();
         ItemStack[] armor     = p.getInventory().getArmorContents();
         
-        // For inventory, check for null
+        // Check for null or id 0, or AIR
         for (ItemStack stack : inventory) {
-            if (stack != null)
+            if (stack != null && stack.getTypeId() != 0)
                 return false;
         }
-        
-        // For armor, check for id 0, or AIR
+
         for (ItemStack stack : armor) {
-            if (stack.getTypeId() != 0)
+            if (stack != null && stack.getTypeId() != 0)
                 return false;
         }
         

@@ -71,6 +71,7 @@ public class ArenaImpl implements Arena
     private Set<Player> randoms;
     
     // Classes stuff
+    private ArenaClass defaultClass;
     private Map<String,ArenaClass> classes;
     private Map<Player,PermissionAttachment> attachments;
     
@@ -139,6 +140,11 @@ public class ArenaImpl implements Arena
         this.classes      = plugin.getArenaMaster().getClasses();
         this.attachments  = new HashMap<Player,PermissionAttachment>();
         this.limitManager = new ClassLimitManager(this, classes, makeSection(section, "class-limits"));
+
+        String defaultClassName = settings.getString("default-class", null);
+        if (defaultClassName != null) {
+            this.defaultClass = classes.get(defaultClassName);
+        }
         
         // Blocks and pets
         this.repairQueue  = new PriorityBlockingQueue<Repairable>(100, new RepairableComparator());
@@ -586,11 +592,11 @@ public class ArenaImpl implements Arena
             }
         }
 
+        MAUtils.sitPets(p);
         movePlayerToLobby(p);
         takeFee(p);
         storePlayerData(p, loc);
         removePotionEffects(p);
-        MAUtils.sitPets(p);
         setHealth(p, p.getMaxHealth());
         p.setFoodLevel(20);
         if (settings.getBoolean("display-timer-as-level", false)) {
@@ -614,6 +620,14 @@ public class ArenaImpl implements Arena
             Messenger.tell(p, Msg.ARENA_START_DELAY, "" + startDelayTimer.getRemaining() / 20l);
         } else if (autoStartTimer.isRunning()) {
             Messenger.tell(p, Msg.ARENA_AUTO_START, "" + autoStartTimer.getRemaining() / 20l);
+        }
+
+        if (defaultClass != null) {
+            // Assign default class if applicable
+            if (!ClassChests.assignClassFromStoredClassChest(this, p, defaultClass)) {
+                assignClass(p, defaultClass.getLowercaseName());
+                Messenger.tell(p, Msg.LOBBY_CLASS_PICKED, defaultClass.getConfigName());
+            }
         }
         
         return true;
@@ -827,48 +841,55 @@ public class ArenaImpl implements Arena
             int amount = inv.getItem(hay).getAmount();
 
             // Variant
-            Horse.Variant variant = Horse.Variant.HORSE;
-            switch (amount % 8) {
-                case 2:  variant = Horse.Variant.DONKEY;         break;
-                case 3:  variant = Horse.Variant.MULE;           break;
-                case 4:  variant = Horse.Variant.SKELETON_HORSE; break;
-                case 5:  variant = Horse.Variant.UNDEAD_HORSE;   break;
-                default: break;
-            }
-
-            // Barding
-            Material barding = null;
-            switch ((amount >> 3) % 4) {
-                case 1: barding = Material.IRON_BARDING;    break;
-                case 2: barding = Material.GOLD_BARDING;    break;
-                case 3: barding = Material.DIAMOND_BARDING; break;
-                default: break;
-            }
+            EntityType type = horseTypeFromAmount(amount);
 
             // Spawn the horse, set its variant, tame it, etc.
-            Horse horse = (Horse) world.spawnEntity(p.getLocation(), EntityType.HORSE);
+            AbstractHorse mount = (AbstractHorse) world.spawnEntity(p.getLocation(), type);
             if (MobArena.random.nextInt(20) == 0) {
-                horse.setBaby();
+                mount.setBaby();
             } else {
-                horse.setAdult();
+                mount.setAdult();
             }
-            horse.setVariant(variant);
-            horse.setTamed(true);
-            horse.setOwner(p);
-            horse.setPassenger(p);
-            horse.setHealth(horse.getMaxHealth());
+            mount.setTamed(true);
+            mount.setOwner(p);
+            mount.setPassenger(p);
+            mount.setHealth(mount.getMaxHealth());
 
-            // Give it a saddle and possibly barding
-            horse.getInventory().setSaddle(new ItemStack(Material.SADDLE));
-            if (barding != null) {
-                horse.getInventory().setArmor(new ItemStack(barding));
+            // Add saddle
+            mount.getInventory().addItem(new ItemStack(Material.SADDLE));
+
+            // Normal horses may have barding
+            if (type == EntityType.HORSE) {
+                Material barding = bardingFromAmount(amount);
+                if (barding != null) {
+                    ((Horse) mount).getInventory().setArmor(new ItemStack(barding));
+                }
             }
 
             // Add to monster manager
-            monsterManager.addMount(horse);
+            monsterManager.addMount(mount);
 
             // Remove the hay
             inv.setItem(hay, null);
+        }
+    }
+
+    private EntityType horseTypeFromAmount(int amount) {
+        switch (amount % 8) {
+            case 2:  return EntityType.DONKEY;
+            case 3:  return EntityType.MULE;
+            case 4:  return EntityType.SKELETON_HORSE;
+            case 5:  return EntityType.ZOMBIE_HORSE;
+            default: return EntityType.HORSE;
+        }
+    }
+
+    private Material bardingFromAmount(int amount) {
+        switch ((amount >> 3) % 4) {
+            case 1:  return Material.IRON_BARDING;
+            case 2:  return Material.GOLD_BARDING;
+            case 3:  return Material.DIAMOND_BARDING;
+            default: return null;
         }
     }
     
@@ -949,6 +970,7 @@ public class ArenaImpl implements Arena
         // And update the inventory as well.
         try {
             inventoryManager.storeInv(p);
+            inventoryManager.clearInventory(p);
         } catch (Exception e) {
             e.printStackTrace();
             Messenger.severe("Failed to store inventory for player " + p.getName() + "!");
@@ -1011,6 +1033,7 @@ public class ArenaImpl implements Arena
         inventoryManager.clearInventory(p);
         try {
             inventoryManager.restoreInv(p);
+            inventoryManager.clearCache(p);
         } catch (Exception e) {
             e.printStackTrace();
             Messenger.severe("Failed to restore inventory for player " + p.getName() + "!");
@@ -1119,13 +1142,21 @@ public class ArenaImpl implements Arena
         arenaPlayer.setArenaClass(arenaClass);
         
         PlayerInventory inv = p.getInventory();
+
+        // Collect armor items, because setContents() now overwrites everyhing
+        ItemStack helmet = null;
+        ItemStack chestplate = null;
+        ItemStack leggings = null;
+        ItemStack boots = null;
+        ItemStack offhand = null;
         
         // Check the very last slot to see if it'll work as a helmet
         int last = contents.length-1;
         if (contents[last] != null) {
-            inv.setHelmet(contents[last]);
+            helmet = contents[last].clone();
             contents[last] = null;
         }
+
         // Check the remaining three of the four last slots for armor
         for (int i = contents.length-1; i > contents.length-5; i--) {
             if (contents[i] == null) continue;
@@ -1133,14 +1164,21 @@ public class ArenaImpl implements Arena
             if (type == null || type == ArmorType.HELMET) continue;
             
             switch (type) {
-                case CHESTPLATE: inv.setChestplate(contents[i]);  break;
-                case LEGGINGS:   inv.setLeggings(contents[i]);    break;
-                case BOOTS:      inv.setBoots(contents[i]);       break;
+                case CHESTPLATE: chestplate = contents[i].clone(); break;
+                case LEGGINGS:   leggings   = contents[i].clone(); break;
+                case BOOTS:      boots      = contents[i].clone(); break;
                 default: break;
             }
             contents[i] = null;
         }
         
+        // Equip the fifth last slot as the off-hand
+        ItemStack fifth = contents[contents.length - 5];
+        if (fifth != null) {
+            offhand = fifth.clone();
+            contents[contents.length - 5] = null;
+        }
+
         // Check the remaining slots for weapons
         if (arenaClass.hasUnbreakableWeapons()) {
             for (ItemStack stack : contents) {
@@ -1149,7 +1187,14 @@ public class ArenaImpl implements Arena
                 }
             }
         }
-        p.getInventory().setContents(contents);
+
+        // Set contents, THEN set armor contents
+        inv.setContents(contents);
+        inv.setHelmet(helmet);
+        inv.setChestplate(chestplate);
+        inv.setLeggings(leggings);
+        inv.setBoots(boots);
+        inv.setItemInOffHand(offhand);
 
         PermissionAttachment pa = arenaClass.grantLobbyPermissions(plugin, p);
         replacePermissions(p, pa);
@@ -1203,7 +1248,7 @@ public class ArenaImpl implements Arena
         }
         
         assignClass(p, className);
-        Messenger.tell(p, Msg.LOBBY_CLASS_PICKED, TextUtils.camelCase(className));
+        Messenger.tell(p, Msg.LOBBY_CLASS_PICKED, this.classes.get(className).getConfigName());
     }
 
     @Override
@@ -1278,6 +1323,7 @@ public class ArenaImpl implements Arena
                     case ARROW:
                     case MINECART:
                     case BOAT:
+                    case SHULKER_BULLET:
                         e.remove();
                 }
             }

@@ -290,6 +290,9 @@ public class ArenaMasterImpl implements ArenaMaster
         for (String className : classNames) {
             loadClass(className);
         }
+
+        // Add a class for "my items"
+        loadClass("My Items");
     }
 
     /**
@@ -297,10 +300,16 @@ public class ArenaMasterImpl implements ArenaMaster
      */
     private ArenaClass loadClass(String classname) {
         ConfigurationSection section = config.getConfigurationSection("classes." + classname);
-        String lowercase = classname.toLowerCase();
+        String lowercase = classname.toLowerCase().replace(" ", "");
 
         // If the section doesn't exist, the class doesn't either.
         if (section == null) {
+            // We may not have a class entry for My Items, but that's fine
+            if (classname.equals("My Items")) {
+                ArenaClass myItems = new ArenaClass.MyItems(0, false, false, this);
+                classes.put(lowercase, myItems);
+                return myItems;
+            }
             Messenger.severe("Failed to load class '" + classname + "'.");
             return null;
         }
@@ -323,7 +332,9 @@ public class ArenaMasterImpl implements ArenaMaster
         }
 
         // Create an ArenaClass with the config-file name.
-        ArenaClass arenaClass = new ArenaClass(classname, price, weps, arms);
+        ArenaClass arenaClass = classname.equals("My Items")
+            ? new ArenaClass.MyItems(price, weps, arms, this)
+            : new ArenaClass(classname, price, weps, arms);
 
         // Parse the items-node
         List<String> items = section.getStringList("items");
@@ -354,18 +365,21 @@ public class ArenaMasterImpl implements ArenaMaster
         String chest = section.getString("chestplate", null);
         String legs  = section.getString("leggings", null);
         String feet  = section.getString("boots", null);
+        String off   = section.getString("offhand", null);
 
         // Parse to ItemStacks
         ItemStack helmet     = ItemParser.parseItem(head);
         ItemStack chestplate = ItemParser.parseItem(chest);
         ItemStack leggings   = ItemParser.parseItem(legs);
         ItemStack boots      = ItemParser.parseItem(feet);
+        ItemStack offhand    = ItemParser.parseItem(off);
 
         // Set in ArenaClass
         arenaClass.setHelmet(helmet);
         arenaClass.setChestplate(chestplate);
         arenaClass.setLeggings(leggings);
         arenaClass.setBoots(boots);
+        arenaClass.setOffHand(offhand);
 
         // Per-class permissions
         loadClassPermissions(arenaClass, section);
@@ -434,6 +448,12 @@ public class ArenaMasterImpl implements ArenaMaster
         ItemStack helmet = inv.getHelmet();
         if (helmet != null && ArmorType.getType(helmet) != ArmorType.HELMET) {
             section.set("helmet", ItemParser.parseString(helmet));
+        }
+
+        // Include the off-hand
+        ItemStack offhand = inv.getItemInOffHand();
+        if (offhand != null) {
+            section.set("offhand", ItemParser.parseString(offhand));
         }
 
         // Save changes.

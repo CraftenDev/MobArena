@@ -3,6 +3,8 @@ package com.garbagemule.MobArena;
 import java.util.*;
 import java.util.Map.Entry;
 
+import com.garbagemule.MobArena.framework.Arena;
+import com.garbagemule.MobArena.framework.ArenaMaster;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.entity.Player;
@@ -13,7 +15,7 @@ import org.bukkit.permissions.PermissionAttachment;
 public class ArenaClass
 {
     private String configName, lowercaseName;
-    private ItemStack helmet, chestplate, leggings, boots;
+    private ItemStack helmet, chestplate, leggings, boots, offhand;
     private List<ItemStack> items, armor;
     private Map<String,Boolean> perms;
     private Map<String,Boolean> lobbyperms;
@@ -27,7 +29,7 @@ public class ArenaClass
      */
     public ArenaClass(String name, double price, boolean unbreakableWeapons, boolean unbreakableArmor) {
         this.configName    = name;
-        this.lowercaseName = name.toLowerCase();
+        this.lowercaseName = name.toLowerCase().replace(" ", "");
         
         this.items = new ArrayList<ItemStack>();
         this.armor = new ArrayList<ItemStack>(4);
@@ -100,6 +102,14 @@ public class ArenaClass
         this.boots = boots;
     }
     
+    /**
+     * Set the off-hand slot for the class.
+     * @param offHand
+     */
+    public void setOffHand(ItemStack offHand) {
+        this.offhand = offHand;
+    }
+
     /**
      * Add an item to the items list.
      * @param stack an item
@@ -182,6 +192,7 @@ public class ArenaClass
         if (chestplate != null) inv.setChestplate(chestplate);
         if (leggings   != null) inv.setLeggings(leggings);
         if (boots      != null) inv.setBoots(boots);
+        if (offhand    != null) inv.setItemInOffHand(offhand);
     }
     
     /**
@@ -330,5 +341,31 @@ public class ArenaClass
     @Override
     public int hashCode() {
         return lowercaseName.hashCode();
+    }
+
+    public static class MyItems extends ArenaClass {
+        private ArenaMaster am;
+
+        public MyItems(double price, boolean unbreakableWeapons, boolean unbreakableArmor, ArenaMaster am) {
+            super("My Items", price, unbreakableWeapons, unbreakableArmor);
+            this.am = am;
+        }
+
+        @Override
+        public void grantItems(Player p) {
+            Arena arena = am.getArenaWithPlayer(p);
+            if (arena != null) {
+                try {
+                    arena.getInventoryManager().restoreInv(p);
+                } catch (Exception e) {
+                    Messenger.severe("Failed to give " + p.getName() + " their own items: " + e.getMessage());
+                }
+            }
+        }
+
+        @Override
+        public Location getClassChest() {
+            return null;
+        }
     }
 }
